@@ -1,0 +1,61 @@
+# Cypress Mongo
+version: '3.8'
+services:
+  app:
+    container_name: yelpcamp-app-1
+    build: .
+    ports:
+      - "3000:3000"
+    networks:
+      - yelpcamp_network
+    env_file:
+      - .env
+    depends_on:
+      - mongo
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 10s
+      retries: 5
+    volumes:
+      - .:/usr/src/app
+    stdin_open: true
+    tty: true
+  mongo:
+    image: arm64v8/mongo
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${DB_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${DB_PASSWORD}
+    ports:
+      - "${DB_PORT}:${DB_PORT}"
+    volumes:
+      - mongodata:/data/db
+    networks:
+      - yelpcamp_network
+  cypress:
+    container_name: yelpcamp-cypress
+    image: "cypress/included:14.0.1"  # Cypress Docker Image
+    user: root
+    depends_on:
+      - app
+    networks:
+      - yelpcamp_network
+    profiles:
+      - testing
+    environment:
+      - CYPRESS_baseUrl=http://yelpcamp-app-1:3000
+    working_dir: /e2e
+    entrypoint: /bin/sh -c "npm install && cypress run"
+    volumes:
+      - .:/e2e
+      - ./cypress/screenshots:/e2e/cypress/screenshots
+volumes:
+  mongodata:
+    driver: local
+  node_modules_volume:
+    # This named volume will preserve the node_modules installed in the Cypress image.
+    driver: local
+networks:
+  yelpcamp_network:
+    name: yelpcamp_network
+    driver: bridge
+

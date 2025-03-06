@@ -1,0 +1,44 @@
+# Use an official Python base image
+FROM python:3.9-slim
+
+# Ensure system packages are up-to-date and install required utilities
+#   - chromium, chromium-driver: for Selenium testing
+#   - default-jre: required for running Allure (Java-based)
+#   - wget, unzip: for downloading and unpacking the Allure binary
+RUN apt-get update && apt-get install -y \
+    chromium \
+    chromium-driver \
+    default-jre \
+    wget \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Allure (change version as needed)
+ENV ALLURE_VERSION=2.20.1
+RUN wget -q "https://github.com/allure-framework/allure2/releases/download/${ALLURE_VERSION}/allure-${ALLURE_VERSION}.zip" -O /tmp/allure.zip \
+    && unzip /tmp/allure.zip -d /opt/allure \
+    && ln -s /opt/allure/bin/allure /usr/local/bin/allure \
+    && rm /tmp/allure.zip
+
+# Copy in requirements.txt first to leverage Docker layer caching
+COPY requirements.txt /app/requirements.txt
+
+# Switch to the /app folder
+WORKDIR /app
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the project (tests, etc.) into the image
+COPY . /app
+
+# For demonstration, set default command to list helpful usage info
+CMD ["bash", "-c", "echo 'Use docker run with a specific command (e.g., pytest) to run tests.'"]
+
+# docker build -t my-selenium-allure-image .
+
+# docker run --rm \
+#   -v $(pwd)/reports:/app/reports \
+#   my-selenium-allure-image \
+#   pytest --alluredir=reports
