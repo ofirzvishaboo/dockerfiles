@@ -1,18 +1,44 @@
-# Use the official Node.js image as the base image
-FROM node:18-bullseye-slim
+# Build stage
+FROM node:18-bullseye-slim AS builder
 
 WORKDIR /usr/src/app
 
+# Copy package files
 COPY package*.json ./
 
-ENV PYTHON=/usr/bin/python3
-
-# Update apt-get and install required build tools, then install dependencies
+# Install dependencies
 RUN apt-get update && \
-    apt-get install -y python3 python3-dev build-essential && \
-    npm install
+    apt-get install -y --no-install-recommends \
+    python3 \
+    python3-dev \
+    build-essential && \
+    npm ci && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
+# Copy source code
 COPY . .
+
+# Production stage
+FROM node:18-bullseye-slim
+
+# Create non-root user
+RUN groupadd -r nodeuser && useradd -r -g nodeuser nodeuser
+
+WORKDIR /usr/src/app
+
+# Copy built application from builder
+COPY --from=builder /usr/src/app .
+
+# Set proper permissions
+RUN chown -R nodeuser:nodeuser /usr/src/app
+
+# Switch to non-root user
+USER nodeuser
+
+# Set environment variables
+ENV NODE_ENV=production \
+    PORT=3000
 
 # Expose the application port
 EXPOSE 3000

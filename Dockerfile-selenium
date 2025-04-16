@@ -1,39 +1,68 @@
-# Use an official Python base image
-FROM python:3.9-slim
+# Build stage
+FROM python:3.9.18-slim AS builder
 
-# Ensure system packages are up-to-date and install required utilities
-#   - chromium, chromium-driver: for Selenium testing
-#   - default-jre: required for running Allure (Java-based)
-#   - wget, unzip: for downloading and unpacking the Allure binary
-RUN apt-get update && apt-get install -y \
-    chromium \
-    chromium-driver \
-    default-jre \
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Allure (change version as needed)
+# Install Allure
 ENV ALLURE_VERSION=2.20.1
 RUN wget -q "https://github.com/allure-framework/allure2/releases/download/${ALLURE_VERSION}/allure-${ALLURE_VERSION}.zip" -O /tmp/allure.zip \
     && unzip /tmp/allure.zip -d /opt/allure \
     && ln -s /opt/allure/bin/allure /usr/local/bin/allure \
     && rm /tmp/allure.zip
 
-# Copy in requirements.txt first to leverage Docker layer caching
-COPY requirements.txt /app/requirements.txt
+# Production stage
+FROM python:3.9.18-slim
 
-# Switch to the /app folder
+# Create non-root user
+RUN groupadd -r selenium && useradd -r -g selenium selenium
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    chromium-driver \
+    default-jre \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Allure from builder
+COPY --from=builder /opt/allure /opt/allure
+COPY --from=builder /usr/local/bin/allure /usr/local/bin/allure
+
+# Set up working directory
 WORKDIR /app
+
+# Copy requirements first to leverage Docker layer caching
+COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the project (tests, etc.) into the image
-COPY . /app
+# Copy application code
+COPY --chown=selenium:selenium . .
 
-# For demonstration, set default command to list helpful usage info
+# Set proper permissions
+RUN chown -R selenium:selenium /app
+
+# Switch to non-root user
+USER selenium
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/opt/allure/bin:$PATH"
+
+# Create reports directory with proper permissions
+RUN mkdir -p /app/reports && chown selenium:selenium /app/reports
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s \
+    CMD python -c "import selenium; print('Selenium is installed')" || exit 1
+
+# Default command
 CMD ["bash", "-c", "echo 'Use docker run with a specific command (e.g., pytest) to run tests.'"]
 
 # docker build -t my-selenium-allure-image .
