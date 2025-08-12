@@ -1,0 +1,11 @@
+version: '3.8'
+services:
+  ubuntu1:
+    container_name: ubuntu1
+    image: ofirzvishaboo/myubuntu:2.3
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "2222:22"
+    stdin_open: true
+    tty: true
